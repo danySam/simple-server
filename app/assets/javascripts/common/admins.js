@@ -23,13 +23,18 @@ AdminAccess.prototype = {
     return document.getElementById("total-selected-facilities")
   },
 
+  loadAccessTree: function () {
+    const tree = new AccessTree()
+    this.accessTree = tree.accessTree
+    this.nodes = tree.nodes
+    this.getParentAccessItem = tree.getParentAccessItem
+  },
+
   checkboxItemListener: function () {
     // list of all checkboxes under facilityAccess()
-    const checkboxes = nodeListToArray(ACCESS_LIST_INPUT_SELECTOR, this.facilityAccess)
-
+    const checkboxes = this.nodes.map(node => node.querySelector(ACCESS_LIST_INPUT_SELECTOR))
     addEventListener("change", e => {
       const targetCheckbox = e.target
-
       // exit if change event did not come from list of checkboxes
       if (checkboxes.indexOf(targetCheckbox) === -1) return
 
@@ -59,7 +64,7 @@ AdminAccess.prototype = {
     }
   },
 
-  onAccessLevelChanged: function ({target}) {
+  onAccessLevelChanged: function ({ target }) {
     this.toggleAccessTreeVisibility(target.value === ACCESS_LEVEL_POWER_USER)
   },
 
@@ -73,7 +78,7 @@ AdminAccess.prototype = {
     }
   },
 
-  onFacilityAccessItemToggled: function ({target}) {
+  onFacilityAccessItemToggled: function ({ target }) {
     const children = Array.from(target.closest("li").childNodes)
     const parentItem = target.closest(".access-item")
     const wrapper = children.find(containsClass("access-item-wrapper"))
@@ -83,16 +88,16 @@ AdminAccess.prototype = {
     }
   },
 
-  updateParentCheckedState: function (element, selector) {
+  updateParentCheckedState: function (checkbox, selector) {
     // find parent and sibling checkboxes
-    const parent = (element.closest(["ul"]).parentNode).querySelector(selector)
-
-    if (parent === element) {
+    const parentAccessItem = checkbox.accessItem.parent()
+    if (!parentAccessItem) {
       this.updateSelectAllCheckbox()
       return
     }
 
-    const siblings = nodeListToArray(selector, parent.closest("li").querySelector(["ul"]))
+    const parentCheckbox = parentAccessItem.checkbox
+    const siblings = parentAccessItem.children().map(item => item.checkbox)
 
     // get checked state of siblings
     // are every or some siblings checked (using Boolean as test function)
@@ -102,17 +107,18 @@ AdminAccess.prototype = {
 
     // check parent if all siblings are checked
     // set indeterminate if not all and not none are checked
-    parent.checked = every
-    parent.indeterminate = some && !every
+    parentCheckbox.checked = every
+    parentCheckbox.indeterminate = some && !every
 
     // recurse until check is the top most parent
-    if (element !== parent) {
-      this.updateParentCheckedState(parent, selector)
+    if (checkbox !== parentCheckbox) {
+      this.updateParentCheckedState(parentCheckbox, selector)
     }
   },
 
   updateTotalFacilityCount: function () {
-    const checkboxes = nodeListToArray(ACCESS_LIST_INPUT_SELECTOR, this.facilityAccess)
+    const accessItems = this.nodes.map(this.getParentAccessItem.bind(this))
+    const checkboxes = accessItems.map(item => item.checkbox)
     const selected = this.getSelectedCount(checkboxes)[0]
 
     this.totalSelectedFacilitiesDiv().textContent = `${selected} facilities selected`
@@ -120,7 +126,7 @@ AdminAccess.prototype = {
 
   findAndUpdateFacilityCount: function () {
     const checkboxes = nodeListToArray(ACCESS_LIST_INPUT_SELECTOR, this.facilityAccess)
-    const orgCheckboxes = checkboxes.filter(({name}) => name === "organizations[]")
+    const orgCheckboxes = checkboxes.filter(({ name }) => name === "organizations[]")
 
     orgCheckboxes.forEach(this.updateFacilityCount.bind(this))
   },
@@ -138,7 +144,7 @@ AdminAccess.prototype = {
 
   getSelectedCount: function (childNodes) {
     return childNodes
-      .filter(({name}) => name === "facilities[]")
+      .filter(({ name }) => name === "facilities[]")
       .reduce(([selected, notSelected], item) =>
         item.checked ? [selected + 1, notSelected] : [selected, notSelected + 1], [0, 0])
   },
@@ -180,18 +186,21 @@ AdminAccess.prototype = {
       .reduce((nodes, item) => {
         const facilityGroupId = item.dataset.facilityGroupId
         const itemsInGroup = nodes[facilityGroupId] ? [...nodes[facilityGroupId], item] : [item]
-        return Object.assign(nodes, {[facilityGroupId]: itemsInGroup})
+        return Object.assign(nodes, { [facilityGroupId]: itemsInGroup })
       }, {})
   },
 
   updateChildrenCheckedState: function (parent, selector) {
     // check/uncheck children (includes check itself)
-    const children = nodeListToArray(selector, parent.closest("li"))
+    const accessNode = this.getParentAccessItem(parent)
+    if (!accessNode) return
+    const children = accessNode.children()
 
     children.forEach(child => {
+      const checkbox = child.checkbox
       // reset indeterminate state for children
-      child.indeterminate = false
-      child.checked = parent.checked
+      checkbox.indeterminate = false
+      checkbox.checked = parent.checked
     })
   },
 
@@ -203,14 +212,14 @@ AdminAccess.prototype = {
     });
   },
 
-  onDOMLoaded: function() {
+  onDOMLoaded: function () {
     document.addEventListener('DOMContentLoaded', (_event) => {
       this.resourceRowCollapseListener()
     });
   },
 
   initialize: function (async = true) {
-    if(async) {
+    if (async) {
       this.onAsyncLoaded()
     } else {
       this.onDOMLoaded()
@@ -227,8 +236,8 @@ AdminAccessInvite.prototype = Object.assign(AdminAccessInvite.prototype, {
   selectAllFacilitiesInput: () => document.getElementById("select-all-facilities-input"),
 
   updateSelectAllCheckbox: function () {
-    const checkboxes = nodeListToArray(ACCESS_LIST_INPUT_SELECTOR, this.facilityAccess)
-    this.selectAllFacilitiesInput().checked = checkboxes.every(checkbox => checkbox.checked)
+    const accessItems = this.nodes.map(this.getParentAccessItem.bind(this))
+    this.selectAllFacilitiesInput().checked = accessItems.every(accessItem => accessItem.checkbox.checked)
   },
 
   updateIndeterminateCheckboxes: function () {
@@ -291,6 +300,7 @@ AdminAccessInvite.prototype = Object.assign(AdminAccessInvite.prototype, {
     const _self = this
 
     document.addEventListener('render_async_load', function () {
+      _self.loadAccessTree()
       _self.selectAllButtonListener()
       _self.checkboxItemListener()
       _self.resourceRowCollapseListener()
@@ -326,5 +336,5 @@ const nodeListToArray = (selector, parent = document) =>
   [].slice.call(parent.querySelectorAll(selector))
 
 // return a function that checks if element contains class
-const containsClass = (className) => ({classList}) =>
+const containsClass = (className) => ({ classList }) =>
   classList && classList.contains(className)
