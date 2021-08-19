@@ -194,8 +194,7 @@ AdminAccess.prototype = {
     // check/uncheck children (includes check itself)
     const accessNode = this.getParentAccessItem(parent)
     if (!accessNode) return
-    const children = accessNode.children()
-
+		const children = accessNode.deepChildren()
     children.forEach(child => {
       const checkbox = child.checkbox
       // reset indeterminate state for children

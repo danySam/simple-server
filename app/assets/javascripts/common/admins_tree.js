@@ -25,6 +25,7 @@ const AccessTree = function () {
 			accessType,
 			parent: getElementParent(accessType, parentId),
 			children: getElementChildren(accessType, value.dataset.id),
+			deepChildren: getElementChildrenDeep(accessType, value.dataset.id)
 		}
 
 		// There are a lot of looks between checkbox and the access item
@@ -40,6 +41,16 @@ const AccessTree = function () {
 
 			return tree[parentKey][parentId];
 		};
+	};
+
+	getElementChildrenDeep = function (accessType, itemId) {
+		return function () {
+			const childElements = getElementChildren(accessType, itemId)()
+			const childAccessType = children[accessType]
+			if (!childAccessType) return childElements
+			const grandChildren = childElements.flatMap(child => getElementChildrenDeep(childAccessType, child.element.dataset.id)())
+			return [...childElements, ...grandChildren]
+		}
 	};
 
 	getElementChildren = function (accessType, itemId) {
